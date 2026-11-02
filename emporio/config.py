@@ -1,7 +1,7 @@
-"""Configuração central do agente.
+"""Central configuration.
 
-Tudo que depende do ambiente (chaves, caminhos, data de referência) é resolvido
-aqui, para que os demais módulos não leiam ``os.environ`` espalhado pelo código.
+Everything environment-dependent (keys, paths, reference date) is resolved
+here, so the rest of the package never reads ``os.environ`` directly.
 """
 
 from __future__ import annotations
@@ -15,57 +15,57 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-RAIZ = Path(__file__).resolve().parent.parent
-CONTEXTO = RAIZ / "context"
+ROOT = Path(__file__).resolve().parent.parent
+CONTEXT_DIR = ROOT / "context"
 
-ARQUIVOS_CSV = {
-    "produtos": CONTEXTO / "desafio_tecnico_ai_eng - products.csv",
-    "categorias": CONTEXTO / "desafio_tecnico_ai_eng - categories.csv",
-    "pedidos": CONTEXTO / "desafio_tecnico_ai_eng - orders.csv",
-    "itens_pedido": CONTEXTO / "desafio_tecnico_ai_eng - order_items.csv",
-    "promocoes": CONTEXTO / "desafio_tecnico_ai_eng - promotions.csv",
+CSV_FILES = {
+    "products": CONTEXT_DIR / "desafio_tecnico_ai_eng - products.csv",
+    "categories": CONTEXT_DIR / "desafio_tecnico_ai_eng - categories.csv",
+    "orders": CONTEXT_DIR / "desafio_tecnico_ai_eng - orders.csv",
+    "order_items": CONTEXT_DIR / "desafio_tecnico_ai_eng - order_items.csv",
+    "promotions": CONTEXT_DIR / "desafio_tecnico_ai_eng - promotions.csv",
 }
 
-ARQUIVO_POLITICAS = CONTEXTO / "políticas_da_loja.pdf"
+POLICIES_FILE = CONTEXT_DIR / "políticas_da_loja.pdf"
 
-# Dia seguinte ao último pedido da base. Ver justificativa em .env.example.
-DATA_REFERENCIA_PADRAO = date(2026, 3, 23)
+# The day after the most recent order in the dataset. Rationale in .env.example.
+DEFAULT_REFERENCE_DATE = date(2026, 3, 23)
 
-MODELO_PADRAO = "claude-haiku-5-5"
+DEFAULT_MODEL = "claude-haiku-5-5"
 
 
 @dataclass(frozen=True)
 class Config:
-    modelo: str
-    data_referencia: date
-    diretorio_sessoes: Path
+    model: str
+    reference_date: date
+    sessions_dir: Path
 
     @property
-    def hoje(self) -> date:
-        return self.data_referencia
+    def today(self) -> date:
+        return self.reference_date
 
 
-def _ler_data_referencia() -> date:
-    bruto = os.getenv("EMPORIO_DATA_REFERENCIA", "").strip()
-    if not bruto:
-        return DATA_REFERENCIA_PADRAO
-    if bruto.lower() in {"hoje", "today", "real"}:
+def _read_reference_date() -> date:
+    raw = os.getenv("EMPORIO_DATA_REFERENCIA", "").strip()
+    if not raw:
+        return DEFAULT_REFERENCE_DATE
+    if raw.lower() in {"hoje", "today", "real"}:
         return date.today()
     try:
-        return date.fromisoformat(bruto)
+        return date.fromisoformat(raw)
     except ValueError as exc:
         raise ValueError(
-            f"EMPORIO_DATA_REFERENCIA inválida: {bruto!r}. "
+            f"EMPORIO_DATA_REFERENCIA inválida: {raw!r}. "
             "Use o formato AAAA-MM-DD ou 'hoje'."
         ) from exc
 
 
-def carregar_config() -> Config:
+def load_config() -> Config:
     return Config(
-        modelo=os.getenv("EMPORIO_MODEL", MODELO_PADRAO),
-        data_referencia=_ler_data_referencia(),
-        diretorio_sessoes=RAIZ / "sessions",
+        model=os.getenv("EMPORIO_MODEL", DEFAULT_MODEL),
+        reference_date=_read_reference_date(),
+        sessions_dir=ROOT / "sessions",
     )
 
 
-CONFIG = carregar_config()
+CONFIG = load_config()

@@ -1,12 +1,15 @@
-"""Interface de linha de comando do agente.
+"""Command-line interface for the agent.
 
-    python -m emporio.cli                      conversa nova
-    python -m emporio.cli -s joao              retoma (ou cria) a sessão "joao"
-    python -m emporio.cli --listar             mostra as sessões já gravadas
-    python -m emporio.cli -p "voces tem ukulele?"   uma pergunta e sai
+    python -m emporio.cli                      new conversation
+    python -m emporio.cli -s joao              resume (or create) session "joao"
+    python -m emporio.cli --listar             show the saved sessions
+    python -m emporio.cli -p "voces tem ukulele?"   one question, then exit
 
-As chamadas de ferramenta aparecem em cinza enquanto acontecem: num agente de
-atendimento, ver *o que ele foi consultar* é metade da avaliação.
+Tool calls show up in grey as they happen: in a support agent, seeing *what it
+went to check* is half the evaluation.
+
+Flags and on-screen text are in Portuguese — this is what the store's team
+would run.
 """
 
 from __future__ import annotations
@@ -20,30 +23,30 @@ from langchain_core.messages import AIMessage, HumanMessage
 from rich.console import Console
 from rich.panel import Panel
 
-from .agente import (
-    ErroDeAtendimento,
-    abrir_checkpointer,
-    construir_grafo,
-    texto_da_resposta,
-    traduzir_erro,
+from .agent import (
+    SupportError,
+    build_graph,
+    open_checkpointer,
+    reply_text,
+    translate_error,
 )
 from .config import CONFIG
-from .prompts import NOME_AGENTE, SAUDACAO
+from .prompts import AGENT_NAME, GREETING
 
 console = Console()
 
-RÓTULO_FERRAMENTA = {
-    "buscar_produtos": "consultando o catálogo",
-    "detalhar_produto": "abrindo a ficha do produto",
-    "listar_categorias": "conferindo as categorias",
-    "promocoes_ativas": "verificando as promoções vigentes",
-    "consultar_pedido": "localizando o pedido",
-    "simular_pagamento": "calculando pagamento e frete",
-    "consultar_politicas": "consultando o manual de políticas",
+TOOL_LABEL = {
+    "search_products": "consultando o catálogo",
+    "product_details": "abrindo a ficha do produto",
+    "list_categories": "conferindo as categorias",
+    "active_promotions": "verificando as promoções vigentes",
+    "lookup_order": "localizando o pedido",
+    "payment_options": "calculando pagamento e frete",
+    "search_policies": "consultando o manual de políticas",
 }
 
 
-def _exigir_credencial() -> None:
+def _require_credentials() -> None:
     if not os.getenv("ANTHROPIC_API_KEY"):
         console.print(
             "[bold red]ANTHROPIC_API_KEY não definida.[/] "
@@ -52,52 +55,50 @@ def _exigir_credencial() -> None:
         raise SystemExit(1)
 
 
-def _conversar(grafo, thread_id: str, mensagem: str) -> str:
-    """Roda um turno, mostrando as ferramentas conforme o agente as chama."""
-    resposta = ""
+def _run_turn(graph, thread_id: str, message: str) -> str:
+    """Run one turn, surfacing tools as the agent calls them."""
+    reply = ""
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
-        passos = grafo.stream(
-            {"messages": [HumanMessage(content=mensagem)]},
+        steps = graph.stream(
+            {"messages": [HumanMessage(content=message)]},
             config=config,
             stream_mode="updates",
         )
-        for passo in passos:
-            for nó, atualização in passo.items():
-                if nó != "agente":
+        for step in steps:
+            for node, update in step.items():
+                if node != "agent":
                     continue
-                for msg in atualização["messages"]:
+                for msg in update["messages"]:
                     if not isinstance(msg, AIMessage):
                         continue
                     if msg.tool_calls:
-                        for chamada in msg.tool_calls:
-                            rótulo = RÓTULO_FERRAMENTA.get(
-                                chamada["name"], chamada["name"]
-                            )
-                            console.print(f"  [dim]… {rótulo}[/]")
+                        for call in msg.tool_calls:
+                            label = TOOL_LABEL.get(call["name"], call["name"])
+                            console.print(f"  [dim]… {label}[/]")
                     else:
-                        resposta = texto_da_resposta(msg)
-    except Exception as exc:  # noqa: BLE001 — traduzir_erro repassa o que não conhece
-        raise traduzir_erro(exc) from None
+                        reply = reply_text(msg)
+    except Exception as exc:  # noqa: BLE001 — translate_error re-raises the unknown
+        raise translate_error(exc) from None
 
-    return resposta
+    return reply
 
 
-def _listar_sessões() -> None:
-    checkpointer = abrir_checkpointer()
-    vistas: dict[str, str] = {}
-    for ponto in checkpointer.list(None):
-        thread = ponto.config["configurable"]["thread_id"]
-        vistas.setdefault(thread, ponto.checkpoint["ts"])
+def _list_sessions() -> None:
+    checkpointer = open_checkpointer()
+    seen: dict[str, str] = {}
+    for point in checkpointer.list(None):
+        thread = point.config["configurable"]["thread_id"]
+        seen.setdefault(thread, point.checkpoint["ts"])
 
-    if not vistas:
+    if not seen:
         console.print("Nenhuma sessão gravada ainda.")
         return
 
-    console.print(f"[bold]{len(vistas)} sessão(ões):[/]")
-    for thread, quando in vistas.items():
-        console.print(f"  {thread}  [dim]último turno: {quando[:19]}[/]")
+    console.print(f"[bold]{len(seen)} sessão(ões):[/]")
+    for thread, when in seen.items():
+        console.print(f"  {thread}  [dim]último turno: {when[:19]}[/]")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -115,28 +116,28 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.listar:
-        _listar_sessões()
+        _list_sessions()
         return 0
 
-    _exigir_credencial()
+    _require_credentials()
 
     thread_id = args.sessao or f"cli-{uuid.uuid4().hex[:8]}"
-    grafo = construir_grafo(checkpointer=abrir_checkpointer())
+    graph = build_graph(checkpointer=open_checkpointer())
 
     if args.pergunta:
         try:
-            resposta = _conversar(grafo, thread_id, args.pergunta)
-        except ErroDeAtendimento as erro:
-            console.print(f"[bold red]{erro}[/]")
+            reply = _run_turn(graph, thread_id, args.pergunta)
+        except SupportError as error:
+            console.print(f"[bold red]{error}[/]")
             return 1
-        console.print(f"\n[bold cyan]{NOME_AGENTE}:[/] {resposta}")
+        console.print(f"\n[bold cyan]{AGENT_NAME}:[/] {reply}")
         return 0
 
     console.print(
         Panel(
-            SAUDACAO,
+            GREETING,
             title="Empório da Música",
-            subtitle=f"sessão {thread_id} · modelo {CONFIG.modelo} · hoje {CONFIG.hoje}",
+            subtitle=f"sessão {thread_id} · modelo {CONFIG.model} · hoje {CONFIG.today}",
             border_style="cyan",
         )
     )
@@ -144,25 +145,25 @@ def main(argv: list[str] | None = None) -> int:
 
     while True:
         try:
-            mensagem = console.input("[bold green]você:[/] ").strip()
+            message = console.input("[bold green]você:[/] ").strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]Até mais![/]")
             return 0
 
-        if not mensagem:
+        if not message:
             continue
-        if mensagem.lower() in {"sair", "exit", "quit", "/sair"}:
+        if message.lower() in {"sair", "exit", "quit", "/sair"}:
             console.print("[dim]Até mais![/]")
             return 0
 
         try:
-            resposta = _conversar(grafo, thread_id, mensagem)
-        except ErroDeAtendimento as erro:
-            # A sessão continua: um limite de requisição não deve derrubar a
-            # conversa, e o histórico até aqui já está no checkpointer.
-            console.print(f"[bold red]{erro}[/]\n")
+            reply = _run_turn(graph, thread_id, message)
+        except SupportError as error:
+            # The session survives: a rate limit should not kill the
+            # conversation, and the history so far is already checkpointed.
+            console.print(f"[bold red]{error}[/]\n")
             continue
-        console.print(f"[bold cyan]{NOME_AGENTE}:[/] {resposta}\n")
+        console.print(f"[bold cyan]{AGENT_NAME}:[/] {reply}\n")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,3 @@
-"""Agente de atendimento da Empório da Música."""
+"""Customer-support agent for Empório da Música."""
 
-__all__ = ["config", "dados", "politicas", "ferramentas", "agente"]
+__all__ = ["config", "data", "policies", "tools", "agent"]

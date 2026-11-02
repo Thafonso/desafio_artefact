@@ -70,7 +70,7 @@ python -m pytest tests -q
 Regerar os exemplos de conversa (consome API):
 
 ```bash
-python scripts/gerar_exemplos.py
+python scripts/generate_examples.py
 ```
 
 ---
@@ -95,24 +95,39 @@ mensagem do cliente
 | Arquivo | Papel |
 |---|---|
 | `emporio/config.py` | Chaves, caminhos e a data de referência |
-| `emporio/dados.py` | CSVs → DataFrames normalizados e consultáveis |
-| `emporio/politicas.py` | PDF → 29 seções → índice BM25 |
-| `emporio/ferramentas.py` | As 7 ferramentas que o modelo pode chamar |
+| `emporio/data.py` | CSVs → DataFrames normalizados e consultáveis |
+| `emporio/policies.py` | PDF → 29 seções → índice BM25 |
+| `emporio/tools.py` | As 7 ferramentas que o modelo pode chamar |
 | `emporio/prompts.py` | Persona, roteamento e limites |
-| `emporio/agente.py` | O grafo LangGraph |
+| `emporio/agent.py` | O grafo LangGraph |
 | `emporio/cli.py` | Interface de conversa |
 
 ### As ferramentas
 
 | Ferramenta | Para quê |
 |---|---|
-| `buscar_produtos` | Catálogo com filtro de termo, categoria e faixa de preço |
-| `detalhar_produto` | Ficha completa: specs, estoque, preços |
-| `listar_categorias` | O que a loja vende e quantos itens tem de cada |
-| `promocoes_ativas` | Só as promoções vigentes |
-| `consultar_pedido` | Status, itens, rastreio e prazos de troca do pedido |
-| `simular_pagamento` | PIX, parcelas válidas e frete |
-| `consultar_politicas` | Busca no manual e devolve o trecho citável |
+| `search_products` | Catálogo com filtro de termo, categoria e faixa de preço |
+| `product_details` | Ficha completa: specs, estoque, preços |
+| `list_categories` | O que a loja vende e quantos itens tem de cada |
+| `active_promotions` | Só as promoções vigentes |
+| `lookup_order` | Status, itens, rastreio e prazos de troca do pedido |
+| `payment_options` | PIX, parcelas válidas e frete |
+| `search_policies` | Busca no manual e devolve o trecho citável |
+
+### Convenção de idioma
+
+O código é em inglês — nomes de módulo, função, variável, comentários e
+docstrings. Fica em português só o que é **conteúdo**, não estrutura: o system
+prompt (define uma persona que fala com cliente brasileiro), o texto que as
+ferramentas devolvem, as mensagens do CLI e as flags que a equipe da loja
+digitaria. A fronteira é simples: se uma pessoa lê aquilo na tela, está em
+português; se é o programa falando com o programa, está em inglês.
+
+A exceção que importa: os **nomes e descrições das ferramentas estão em
+inglês**, e eles não são só documentação — vão no payload da API e são o que o
+modelo lê para escolher qual chamar. Na prática o Claude roteia igualmente bem
+com descrição em inglês e conversa em português, mas é uma mudança que afeta
+comportamento, não só legibilidade.
 
 ---
 
@@ -149,7 +164,7 @@ motivo concreto: o **checkpointer**. Ele persiste o estado do grafo por
 `thread_id`, o que dá retomada de conversa com as chamadas de ferramenta
 incluídas, sem eu escrever uma camada de serialização. O CLI usa `SqliteSaver`
 e o gerador de exemplos usa `InMemorySaver` — a diferença entre os dois é o
-argumento passado para `construir_grafo`.
+argumento passado para `build_graph`.
 
 O grafo está escrito explicitamente (`agente` → `tools_condition` →
 `ferramentas` → `agente`) em vez de `create_react_agent`, porque o ciclo é o
@@ -256,7 +271,7 @@ cliente, que não temos.
 que são funções puras — travam as regras do manual (PIX que não acumula com
 promoção, parcela mínima, janelas de prazo) sem gastar uma chamada de LLM. O que
 *não* está coberto é a decisão do modelo: nada garante que ele vá chamar
-`consultar_politicas` na pergunta certa. Essa é a lacuna mais séria do projeto.
+`search_policies` na pergunta certa. Essa é a lacuna mais séria do projeto.
 
 **A busca de produtos exige que todas as palavras apareçam.** Uma busca por
 "violão elétrico nylon" filtra por cada termo; se o cliente escrever o modelo
@@ -297,7 +312,7 @@ Depois:
 ## Exemplos de interação
 
 Em [`examples/`](examples/), cinco conversas geradas por
-`scripts/gerar_exemplos.py` rodando contra o modelo de verdade — incluindo quais
+`scripts/generate_examples.py` rodando contra o modelo de verdade — incluindo quais
 ferramentas o agente escolheu chamar em cada turno. Nenhuma foi escrita à mão.
 
 | # | Cenário | O que demonstra |
