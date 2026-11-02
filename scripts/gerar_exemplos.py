@@ -20,7 +20,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 
-from emporio.agente import construir_grafo, texto_da_resposta  # noqa: E402
+from emporio.agente import (  # noqa: E402
+    ErroDeAtendimento,
+    construir_grafo,
+    texto_da_resposta,
+    traduzir_erro,
+)
 from emporio.config import CONFIG, RAIZ  # noqa: E402
 from emporio.prompts import NOME_AGENTE  # noqa: E402
 
@@ -125,23 +130,27 @@ def rodar_roteiro(grafo, roteiro: dict) -> str:
         ferramentas: list[str] = []
         resposta = ""
 
-        for passo in grafo.stream(
-            {"messages": [HumanMessage(content=mensagem)]},
-            config={"configurable": {"thread_id": thread_id}},
-            stream_mode="updates",
-        ):
-            atualização = passo.get("agente")
-            if not atualização:
-                continue
-            for msg in atualização["messages"]:
-                if not isinstance(msg, AIMessage):
+        try:
+            passos = grafo.stream(
+                {"messages": [HumanMessage(content=mensagem)]},
+                config={"configurable": {"thread_id": thread_id}},
+                stream_mode="updates",
+            )
+            for passo in passos:
+                atualização = passo.get("agente")
+                if not atualização:
                     continue
-                if msg.tool_calls:
-                    ferramentas.extend(
-                        f"{c['name']}({_args(c['args'])})" for c in msg.tool_calls
-                    )
-                else:
-                    resposta = texto_da_resposta(msg)
+                for msg in atualização["messages"]:
+                    if not isinstance(msg, AIMessage):
+                        continue
+                    if msg.tool_calls:
+                        ferramentas.extend(
+                            f"{c['name']}({_args(c['args'])})" for c in msg.tool_calls
+                        )
+                    else:
+                        resposta = texto_da_resposta(msg)
+        except Exception as exc:  # noqa: BLE001
+            raise traduzir_erro(exc) from None
 
         if ferramentas:
             linhas.append("<sub>🔧 " + " · ".join(ferramentas) + "</sub>")
@@ -174,7 +183,12 @@ def main(argv: list[str]) -> int:
         roteiro = ROTEIROS[numero - 1]
         print(f"[{numero}] {roteiro['titulo']}")
         destino = SAÍDA / roteiro["arquivo"]
-        destino.write_text(rodar_roteiro(grafo, roteiro), encoding="utf-8")
+        try:
+            conversa = rodar_roteiro(grafo, roteiro)
+        except ErroDeAtendimento as erro:
+            print(f"\n{erro}")
+            return 1
+        destino.write_text(conversa, encoding="utf-8")
         print(f"    -> {destino.relative_to(RAIZ)}\n")
 
     return 0

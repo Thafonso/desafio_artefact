@@ -17,6 +17,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+import anthropic
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -107,6 +108,66 @@ def texto_da_resposta(mensagem: BaseMessage) -> str:
         if isinstance(bloco, dict) and bloco.get("type") == "text"
     ]
     return "\n".join(p for p in partes if p).strip()
+
+
+class ErroDeAtendimento(RuntimeError):
+    """Falha de API já traduzida para algo que a pessoa consegue agir."""
+
+
+def traduzir_erro(exc: Exception) -> ErroDeAtendimento:
+    """Transforma a exceção do SDK na causa real, sem despejar stack trace.
+
+    Quem roda isto quer saber o que fazer a seguir — se falta crédito, se a
+    chave está errada ou se é só esperar —, não ler cinquenta quadros de
+    pilha do LangGraph.
+    """
+    if isinstance(exc, anthropic.AuthenticationError):
+        return ErroDeAtendimento(
+            "Chave de API recusada. Confira ANTHROPIC_API_KEY no .env — ela "
+            "precisa ser uma chave do console.anthropic.com, começando por "
+            "'sk-ant-'."
+        )
+
+    if isinstance(exc, anthropic.PermissionDeniedError):
+        return ErroDeAtendimento(
+            "A chave não tem permissão para este modelo. Verifique o "
+            f"EMPORIO_MODEL ({CONFIG.modelo}) e o workspace da chave."
+        )
+
+    if isinstance(exc, anthropic.RateLimitError):
+        return ErroDeAtendimento(
+            "Limite de requisições atingido. Espere alguns segundos e tente "
+            "de novo."
+        )
+
+    if isinstance(exc, anthropic.BadRequestError):
+        mensagem = str(getattr(exc, "message", exc))
+        if "credit balance" in mensagem.lower():
+            return ErroDeAtendimento(
+                "A conta da API não tem créditos. A chave é válida, mas o "
+                "saldo está zerado — adicione créditos em Plans & Billing no "
+                "console.anthropic.com.\n"
+                "Assinatura do Claude (Pro/Max) não financia a API: o saldo é "
+                "separado."
+            )
+        return ErroDeAtendimento(f"Requisição recusada pela API: {mensagem}")
+
+    if isinstance(exc, anthropic.APITimeoutError):
+        return ErroDeAtendimento("A API demorou demais para responder.")
+
+    if isinstance(exc, anthropic.APIConnectionError):
+        return ErroDeAtendimento(
+            "Não foi possível falar com a API da Anthropic. Verifique a "
+            "conexão (e o proxy, se houver)."
+        )
+
+    if isinstance(exc, anthropic.APIStatusError):
+        return ErroDeAtendimento(
+            f"A API devolveu erro {exc.status_code}: "
+            f"{getattr(exc, 'message', exc)}"
+        )
+
+    raise exc
 
 
 def ferramentas_usadas(mensagem: BaseMessage) -> list[str]:

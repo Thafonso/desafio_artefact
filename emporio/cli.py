@@ -20,7 +20,13 @@ from langchain_core.messages import AIMessage, HumanMessage
 from rich.console import Console
 from rich.panel import Panel
 
-from .agente import abrir_checkpointer, construir_grafo, texto_da_resposta
+from .agente import (
+    ErroDeAtendimento,
+    abrir_checkpointer,
+    construir_grafo,
+    texto_da_resposta,
+    traduzir_erro,
+)
 from .config import CONFIG
 from .prompts import NOME_AGENTE, SAUDACAO
 
@@ -51,23 +57,29 @@ def _conversar(grafo, thread_id: str, mensagem: str) -> str:
     resposta = ""
     config = {"configurable": {"thread_id": thread_id}}
 
-    for passo in grafo.stream(
-        {"messages": [HumanMessage(content=mensagem)]},
-        config=config,
-        stream_mode="updates",
-    ):
-        for nó, atualização in passo.items():
-            if nó != "agente":
-                continue
-            for msg in atualização["messages"]:
-                if not isinstance(msg, AIMessage):
+    try:
+        passos = grafo.stream(
+            {"messages": [HumanMessage(content=mensagem)]},
+            config=config,
+            stream_mode="updates",
+        )
+        for passo in passos:
+            for nó, atualização in passo.items():
+                if nó != "agente":
                     continue
-                if msg.tool_calls:
-                    for chamada in msg.tool_calls:
-                        rótulo = RÓTULO_FERRAMENTA.get(chamada["name"], chamada["name"])
-                        console.print(f"  [dim]… {rótulo}[/]")
-                else:
-                    resposta = texto_da_resposta(msg)
+                for msg in atualização["messages"]:
+                    if not isinstance(msg, AIMessage):
+                        continue
+                    if msg.tool_calls:
+                        for chamada in msg.tool_calls:
+                            rótulo = RÓTULO_FERRAMENTA.get(
+                                chamada["name"], chamada["name"]
+                            )
+                            console.print(f"  [dim]… {rótulo}[/]")
+                    else:
+                        resposta = texto_da_resposta(msg)
+    except Exception as exc:  # noqa: BLE001 — traduzir_erro repassa o que não conhece
+        raise traduzir_erro(exc) from None
 
     return resposta
 
@@ -112,7 +124,11 @@ def main(argv: list[str] | None = None) -> int:
     grafo = construir_grafo(checkpointer=abrir_checkpointer())
 
     if args.pergunta:
-        resposta = _conversar(grafo, thread_id, args.pergunta)
+        try:
+            resposta = _conversar(grafo, thread_id, args.pergunta)
+        except ErroDeAtendimento as erro:
+            console.print(f"[bold red]{erro}[/]")
+            return 1
         console.print(f"\n[bold cyan]{NOME_AGENTE}:[/] {resposta}")
         return 0
 
@@ -139,7 +155,13 @@ def main(argv: list[str] | None = None) -> int:
             console.print("[dim]Até mais![/]")
             return 0
 
-        resposta = _conversar(grafo, thread_id, mensagem)
+        try:
+            resposta = _conversar(grafo, thread_id, mensagem)
+        except ErroDeAtendimento as erro:
+            # A sessão continua: um limite de requisição não deve derrubar a
+            # conversa, e o histórico até aqui já está no checkpointer.
+            console.print(f"[bold red]{erro}[/]\n")
+            continue
         console.print(f"[bold cyan]{NOME_AGENTE}:[/] {resposta}\n")
 
 
