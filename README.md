@@ -235,12 +235,17 @@ padrão é `2026-03-23`, o dia seguinte ao último pedido — o único valor que
 mantém a base inteira coerentemente no passado. Configurável em
 `EMPORIO_DATA_REFERENCIA`; `hoje` usa a data real.
 
-**Não existe `customers.csv`.** O enunciado menciona dados de clientes, mas o
-arquivo não foi entregue — `orders.customer_id` aponta para uma tabela que não
-existe. Consequências: o agente não cumprimenta pelo nome (o fluxo 7.2 do manual
-pede isso "se disponível") e não localiza pedido por nome, CPF ou e-mail. A
-identificação é pelo número do pedido, e o agente não entrega dados de um pedido
-sem que o cliente informe o número.
+**O agente não usa cadastro de clientes.** `orders.customer_id` aponta para uma
+tabela que o projeto não consome, então o agente não sabe o nome de quem fala
+com ele e não localiza pedido por nome, CPF ou e-mail. A identificação é pelo
+número do pedido, e ele não entrega dados de um pedido sem que o cliente informe
+o número.
+
+Isso tem dois custos, que prefiro declarar a esconder. O manual pede, no fluxo
+7.2, para "cumprimentar o cliente pelo nome (se disponível)" — e o agente nunca
+cumprimenta. E a cidade do cliente, que decidiria se a entrega é na região
+metropolitana, não está ao alcance dele: `payment_options` recebe isso como
+parâmetro e assume Campo Grande por padrão (ver Limitações).
 
 **A data de recebimento é aproximada pela previsão de entrega.** A base não
 registra quando o produto chegou de fato, só `estimated_delivery`. É o que o
@@ -297,6 +302,15 @@ número. Mitiguei no prompt, instruindo uma busca por assunto, e as conversas
 regeradas passaram a fazer chamadas curtas e focadas. É mitigação, não
 correção: a fragilidade é do retriever, e some com busca híbrida.
 
+**O frete presume Campo Grande.** `payment_options` tem
+`metro_area_delivery=True` como padrão, e o agente não tem como saber a cidade
+do cliente — ele teria que perguntar, e nem sempre pergunta. Para quem é de
+fora, a regra correta é cotação por CEP (PAC, SEDEX ou Jadlog), não o "frete
+grátis acima de R$ 500" da região metropolitana. É a limitação que mais me
+incomoda das que sobraram, porque produz uma resposta *errada* em vez de uma
+resposta incompleta. O conserto certo não é prompt, é ter a cidade do cliente
+junto do pedido.
+
 **O histórico cresce sem limite.** Uma conversa longa reenvia tudo a cada turno.
 Com 1M de contexto e atendimento curto não é um problema prático, mas não há
 compactação.
@@ -317,8 +331,8 @@ Depois:
   problema de sinônimo, que é o teto da abordagem atual.
 - **Cache de prompt** no bloco de system + definições de ferramenta. O prefixo
   já é estável por construção, então é quase de graça.
-- **`customers.csv`** e, com ele, identificação do cliente, saudação pelo nome e
-  histórico de compras para recomendação.
+- **Cadastro de clientes** e, com ele, saudação pelo nome, cidade para o cálculo
+  de frete e histórico de compras para recomendação.
 - **Handoff para humano** — um gatilho explícito quando o cliente reclama ou
   pede alguém. Hoje o agente orienta a procurar a loja, mas não registra nada.
 - **Uma API** (FastAPI) no lugar do CLI, que é o que um WhatsApp real precisaria.
@@ -348,11 +362,10 @@ O fluxo foi deliberadamente de duas fases.
 
 **Primeiro exploração, sem escrever código.** Pedi que lesse o enunciado e os
 dados e me trouxesse o que estava lá antes de propor qualquer arquitetura. Essa
-passada rendeu as descobertas que mais moldaram o projeto: que `customers.csv`
-não existe, que só 4 das 25 promoções estão vigentes — e que o Takamine GD20, o
-produto sugerido no próprio enunciado, tem uma promoção expirada, o que virou o
-exemplo 3. O descompasso entre a data real e o fim dos dados também apareceu
-aqui, antes de virar bug.
+passada rendeu as descobertas que mais moldaram o projeto: que só 4 das 25
+promoções estão vigentes — e que o Takamine GD20, o produto sugerido no próprio
+enunciado, tem uma promoção expirada, o que virou o exemplo 3. O descompasso
+entre a data real e o fim dos dados também apareceu aqui, antes de virar bug.
 
 **Depois implementação em blocos verificáveis.** Dados → políticas →
 ferramentas → grafo → CLI, com teste rodando a cada etapa e um commit por bloco.
