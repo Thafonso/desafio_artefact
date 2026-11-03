@@ -378,8 +378,8 @@ between the real date and the end of the data also surfaced here, before it
 could become a bug.
 
 **Then implementation in verifiable blocks.** Data → policies → tools → graph →
-CLI, with tests running at each step and one commit per block. The repository's
-history is that process, not a reconstruction.
+CLI, with tests running at each step and one commit per block. The commits in
+the repository follow the order in which the blocks were built and validated.
 
 The **architectural decisions were mine**, taken over options I asked to see
 with their trade-offs: function calling over a SQL agent, LangGraph over a
