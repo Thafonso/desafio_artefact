@@ -258,6 +258,14 @@ oferecê-las nem por acidente. A seção 7.3 do manual manda verificar vigência
 nunca prometer desconto vencido; em vez de confiar no modelo para isso, o dado
 não existe. (O exemplo 3 mostra o cliente perguntando por uma delas.)
 
+**O manual tem dois telefones diferentes, e os dois são usados.** A seção 1.2
+dá (67) 3341-4444 como "telefone / WhatsApp"; a seção 7 dá (67) 3321-4500 como
+"o canal de WhatsApp". Nas conversas de exemplo o agente cita um ou outro
+conforme a seção que recuperou. Não inventei um desempate: ambos estão no
+documento que a loja forneceu, e escolher um seria eu decidindo um dado de
+negócio. É o tipo de coisa que se confirma com o cliente antes de ir para
+produção.
+
 **O agente não executa ações, só informa.** Não cancela pedido, não emite
 reembolso, não aplica desconto e não reserva produto — os CSVs são a fonte da
 verdade e escrever neles a partir de uma conversa exigiria autenticação do
@@ -280,6 +288,14 @@ errado, não há fallback por similaridade.
 **BM25 não entende sinônimo.** "Posso pagar fiado?" não recupera a seção de
 formas de pagamento, porque nenhuma palavra bate. O corte de radical resolve
 flexão, não vocabulário.
+
+**Pergunta com dois assuntos abafa um deles.** Apareceu na primeira rodada de
+exemplos: o agente buscou *"pedido atrasado não entregue, contato da loja e
+WhatsApp"* numa chamada só, os termos de entrega dominaram o ranking e a seção
+de contato não voltou nem no top-6 — o agente acabou dizendo que não tinha o
+número. Mitiguei no prompt, instruindo uma busca por assunto, e as conversas
+regeradas passaram a fazer chamadas curtas e focadas. É mitigação, não
+correção: a fragilidade é do retriever, e some com busca híbrida.
 
 **O histórico cresce sem limite.** Uma conversa longa reenvia tudo a cada turno.
 Com 1M de contexto e atendimento curto não é um problema prático, mas não há
