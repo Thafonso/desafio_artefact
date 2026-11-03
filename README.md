@@ -1,33 +1,37 @@
-# Empório da Música — agente de atendimento
+# Empório da Música — customer support agent
 
-Protótipo de um agente de atendimento por mensagem de texto para a Empório da
-Música, loja fictícia de instrumentos musicais em Campo Grande/MS. O agente
-responde dúvidas sobre catálogo, preços, pedidos e políticas da loja, e sabe
-quando consultar cada fonte.
+Prototype of a text-message support agent for Empório da Música, a fictional
+musical instrument store in Campo Grande, Brazil. The agent answers questions
+about the catalog, prices, orders and store policies, and knows which source to
+consult for each.
 
-Desafio técnico para a vaga de AI Engineer na Artefact.
+Technical challenge for the AI Engineer role at Artefact.
+
+> The agent talks to Brazilian customers, so everything it says — and
+> everything the CLI prints — is in Portuguese. The code and this document are
+> in English; see [Language convention](#language-convention).
 
 ---
 
-## Como rodar
+## Running it
 
-**Requisitos:** Python 3.11+ (desenvolvido e testado no 3.13) e uma chave da
-API Anthropic — [console.anthropic.com](https://console.anthropic.com/settings/keys).
+**Requirements:** Python 3.11+ (developed and tested on 3.13) and an Anthropic
+API key — [console.anthropic.com](https://console.anthropic.com/settings/keys).
 
 ```bash
-git clone <url-do-repositorio>
-cd emp_musicabot
+git clone https://github.com/Thafonso/desafio_artefact.git
+cd desafio_artefact
 python -m venv .venv
 ```
 
-Ative o ambiente — `\.venv\Scripts\activate` no Windows, `source .venv/bin/activate`
-no Linux/macOS — e então:
+Activate the environment — `.venv\Scripts\activate` on Windows,
+`source .venv/bin/activate` on Linux/macOS — then:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Copie `.env.example` para `.env` e preencha a chave:
+Copy `.env.example` to `.env` and fill in the key:
 
 ```bash
 cp .env.example .env
@@ -37,13 +41,13 @@ cp .env.example .env
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Conversar com o agente:
+Talk to the agent:
 
 ```bash
 python -m emporio.cli
 ```
 
-Outros modos:
+Other modes:
 
 ```bash
 python -m emporio.cli -p "quais violões vocês têm até R$1000?"
@@ -57,17 +61,17 @@ python -m emporio.cli -s joao
 python -m emporio.cli --listar
 ```
 
-`-p` faz uma pergunta e sai. `-s` nomeia a sessão: rodar de novo com o mesmo
-nome retoma a conversa de onde parou, inclusive depois de fechar o terminal.
-`--listar` mostra as sessões gravadas.
+`-p` asks one question and exits. `-s` names the session: running again with
+the same name resumes the conversation where it stopped, even after closing the
+terminal. `--listar` shows the saved sessions.
 
-Rodar os testes:
+Run the tests:
 
 ```bash
 python -m pytest tests -q
 ```
 
-Regerar os exemplos de conversa (consome API):
+Regenerate the example conversations (spends API credit):
 
 ```bash
 python scripts/generate_examples.py
@@ -75,312 +79,318 @@ python scripts/generate_examples.py
 
 ---
 
-## Arquitetura
+## Architecture
 
 ```
-mensagem do cliente
+customer message
         │
         ▼
-   ┌─────────┐   pediu ferramenta?   ┌──────────────┐
-   │ agente  │ ───────────────────▶  │ ferramentas  │
-   │ (LLM)   │ ◀───────────────────  │ (7, puras)   │
-   └─────────┘      resultado        └──────────────┘
+   ┌─────────┐   asked for a tool?   ┌──────────────┐
+   │  agent  │ ───────────────────▶  │    tools     │
+   │  (LLM)  │ ◀───────────────────  │ (7, pure)    │
+   └─────────┘        result         └──────────────┘
         │                                   │
-        │ não pediu                  ┌──────┴───────┐
+        │ no tool                    ┌──────┴───────┐
         ▼                            ▼              ▼
-    resposta                  CSVs tratados   índice BM25
-                                (pandas)      (políticas)
+      reply                   cleaned CSVs    BM25 index
+                                (pandas)      (policies)
 ```
 
-| Arquivo | Papel |
+| File | Role |
 |---|---|
-| `emporio/config.py` | Chaves, caminhos e a data de referência |
-| `emporio/data.py` | CSVs → DataFrames normalizados e consultáveis |
-| `emporio/policies.py` | PDF → 29 seções → índice BM25 |
-| `emporio/tools.py` | As 7 ferramentas que o modelo pode chamar |
-| `emporio/prompts.py` | Persona, roteamento e limites |
-| `emporio/agent.py` | O grafo LangGraph |
-| `emporio/cli.py` | Interface de conversa |
+| `emporio/config.py` | Keys, paths and the reference date |
+| `emporio/data.py` | CSVs → normalized, queryable DataFrames |
+| `emporio/policies.py` | PDF → 29 sections → BM25 index |
+| `emporio/tools.py` | The 7 tools the model can call |
+| `emporio/prompts.py` | Persona, routing and limits |
+| `emporio/agent.py` | The LangGraph graph |
+| `emporio/cli.py` | Conversation interface |
 
-### As ferramentas
+### The tools
 
-| Ferramenta | Para quê |
+| Tool | What for |
 |---|---|
-| `search_products` | Catálogo com filtro de termo, categoria e faixa de preço |
-| `product_details` | Ficha completa: specs, estoque, preços |
-| `list_categories` | O que a loja vende e quantos itens tem de cada |
-| `active_promotions` | Só as promoções vigentes |
-| `lookup_order` | Status, itens, rastreio e prazos de troca do pedido |
-| `payment_options` | PIX, parcelas válidas e frete |
-| `search_policies` | Busca no manual e devolve o trecho citável |
+| `search_products` | Catalog, filtered by term, category and price range |
+| `product_details` | Full record: specs, stock, prices |
+| `list_categories` | What the store sells and how many of each |
+| `active_promotions` | Live promotions only |
+| `lookup_order` | Status, items, tracking and exchange windows |
+| `payment_options` | PIX, valid instalments and shipping |
+| `search_policies` | Searches the manual, returns a quotable passage |
 
-### Convenção de idioma
+### Language convention
 
-O código é em inglês — nomes de módulo, função, variável, comentários e
-docstrings. Fica em português só o que é **conteúdo**, não estrutura: o system
-prompt (define uma persona que fala com cliente brasileiro), o texto que as
-ferramentas devolvem, as mensagens do CLI e as flags que a equipe da loja
-digitaria. A fronteira é simples: se uma pessoa lê aquilo na tela, está em
-português; se é o programa falando com o programa, está em inglês.
+The code is in English — module, function and variable names, comments and
+docstrings. Portuguese is reserved for **content**, not structure: the system
+prompt (it defines a persona talking to Brazilian customers), the text the
+tools return, the CLI messages and the flags the store's team would type. The
+line is simple: if a person reads it on screen, it is Portuguese; if it is the
+program talking to the program, it is English.
 
-A exceção que importa: os **nomes e descrições das ferramentas estão em
-inglês**, e eles não são só documentação — vão no payload da API e são o que o
-modelo lê para escolher qual chamar. Na prática o Claude roteia igualmente bem
-com descrição em inglês e conversa em português, mas é uma mudança que afeta
-comportamento, não só legibilidade.
-
----
-
-## Decisões técnicas
-
-### Híbrido: function calling nos dados, retrieval nas políticas
-
-Os dados da loja são tabulares e pequenos (65 produtos, 20 pedidos). Perguntas
-reais sobre eles são filtros e agregações — *"violões até R$1000"*, *"cadê meu
-pedido 8"* — e é exatamente nisso que busca por similaridade erra: embedding não
-sabe que 999 ≤ 1000. Então o catálogo é exposto como **ferramentas
-determinísticas** sobre DataFrames.
-
-Considerei um **agente de SQL**, que daria mais flexibilidade de consulta. Para
-65 linhas não compensa: adiciona uma superfície de falha inteira (SQL inválido,
-injeção, erro silencioso de join) sem resolver nenhum problema que as sete
-ferramentas não resolvam. Se o catálogo fossem as 300 mil linhas que uma loja
-real teria, a conta inverteria.
-
-As **políticas** são o caso oposto: texto corrido em linguagem natural, onde a
-pergunta do cliente quase nunca usa as palavras do manual. Aí retrieval é a
-ferramenta certa.
-
-A seção 7.1 do próprio manual fecha a questão: *"nunca fornecer informações
-sobre preços, estoque ou prazos sem consultar o sistema"*. O agente foi
-construído para que isso seja estruturalmente verdade, não uma instrução que o
-modelo pode ignorar.
-
-### Por que LangGraph
-
-O ciclo `modelo → ferramenta → modelo` é ~40 linhas escritas à mão, e cheguei a
-considerar fazê-lo assim para evitar a dependência. Fiquei com LangGraph por um
-motivo concreto: o **checkpointer**. Ele persiste o estado do grafo por
-`thread_id`, o que dá retomada de conversa com as chamadas de ferramenta
-incluídas, sem eu escrever uma camada de serialização. O CLI usa `SqliteSaver`
-e o gerador de exemplos usa `InMemorySaver` — a diferença entre os dois é o
-argumento passado para `build_graph`.
-
-O grafo está escrito explicitamente (`agente` → `tools_condition` →
-`ferramentas` → `agente`) em vez de `create_react_agent`, porque o ciclo é o
-coração do projeto e esconder isso atrás de uma chamada tiraria o que há de
-mais interessante para ler.
-
-### Modelo: `claude-haiku-5-5`
-
-A tarefa é roteamento entre sete ferramentas bem descritas e redação curta em
-português — não exige raciocínio pesado. O Haiku 5.5 é o modelo mais barato da
-geração atual e tem function calling confiável; num atendimento que roda milhares
-de conversas, isso é a diferença entre viável e inviável. O modelo é
-configurável por `EMPORIO_MODEL`, então subir para Sonnet é mudar uma linha do
-`.env`.
-
-Uma particularidade: o Haiku 5.5 rejeita valores de amostragem diferentes do
-padrão (`temperature`, `top_p`, `top_k`). Verifiquei o payload montado pelo
-`langchain-anthropic` antes de qualquer chamada para confirmar que ele não
-envia esses campos.
-
-### Retrieval: BM25 sobre as seções, não embeddings
-
-O manual tem 8 páginas. Caberia inteiro no system prompt, e isso funcionaria.
-Preferi expô-lo como **ferramenta** por duas razões: mantém o prefixo do prompt
-pequeno e estável, e torna explícita e auditável a decisão *"isto é pergunta de
-política"* — que é justamente o comportamento que o desafio pede para o agente
-acertar. Nos exemplos gerados dá para ver o agente escolhendo entre consultar
-dados e consultar o manual.
-
-A busca é lexical (BM25) e não vetorial, porque com ~25 trechos curtos e
-perguntas em português cheias de termos literais do manual (*troca, garantia,
-boleto, frete*) ela acerta, e evita puxar um segundo provedor só para gerar
-embeddings.
-
-Um detalhe que só apareceu testando: o cliente escreve *"me arrependi"* e o
-manual diz *"Direito de Arrependimento"*. Sem tratamento, a seção 4.1 nunca era
-recuperada. A solução foi cortar os radicais em 5 caracteres — um stemmer
-pobre, mas suficiente para o corpus e sem os falsos positivos de um stemmer
-completo. Com ele, as 11 perguntas de teste trazem a seção certa no top-3.
-
-### Extração do PDF
-
-O modo padrão do `pypdf` devolve este manual com uma palavra por linha, o que
-destrói qualquer chance de detectar títulos. O modo `layout` preserva a
-estrutura visual, e aí as 29 seções numeradas saem com um regex de uma linha.
-
-### Prompt: identidade no prompt, fatos na ferramenta
-
-O system prompt tem persona, tom, regras de roteamento e limites — e **nenhum
-dado da loja**. Endereço, horário e formas de pagamento aceitas não estão
-escritos lá, mesmo sendo estáveis. Se estivessem, haveria duas fontes de verdade
-para a mesma informação, e elas divergiriam na primeira vez que o manual fosse
-atualizado.
-
-O tom veio da seção 7.1 do manual: *"informal mas profissional (...) como se
-estivesse conversando com um amigo que entende de música"*. A agente se chama
-Dani.
+The exception that matters: the **tool names and descriptions are in English**,
+and they are not just documentation — they travel in the API payload and are
+what the model reads to pick one. In practice Claude routes just as well with
+English descriptions and a Portuguese conversation, but it is a change that
+affects behaviour, not only readability.
 
 ---
 
-## Suposições assumidas
+## Technical decisions
 
-**A data de referência do agente é configurável, e o padrão não é hoje.**
-Os dados vão de 2025-10-15 a 2026-03-22. Rodar o agente com a data real do
-sistema colocaria todos os pedidos fora das janelas de 7 dias (arrependimento) e
-30 dias (troca por defeito), tornando impossível demonstrar essas regras. O
-padrão é `2026-03-23`, o dia seguinte ao último pedido — o único valor que
-mantém a base inteira coerentemente no passado. Configurável em
-`EMPORIO_DATA_REFERENCIA`; `hoje` usa a data real.
+### Hybrid: function calling on the data, retrieval on the policies
 
-**O agente não usa cadastro de clientes.** `orders.customer_id` aponta para uma
-tabela que o projeto não consome, então o agente não sabe o nome de quem fala
-com ele e não localiza pedido por nome, CPF ou e-mail. A identificação é pelo
-número do pedido, e ele não entrega dados de um pedido sem que o cliente informe
-o número.
+The store's data is tabular and small (65 products, 20 orders). Real questions
+about it are filters and aggregations — *"violões até R$1000"*, *"cadê meu
+pedido 8"* — and that is exactly where similarity search fails: an embedding
+does not know that 999 ≤ 1000. So the catalog is exposed as **deterministic
+tools** over DataFrames.
 
-Isso tem dois custos, que prefiro declarar a esconder. O manual pede, no fluxo
-7.2, para "cumprimentar o cliente pelo nome (se disponível)" — e o agente nunca
-cumprimenta. E a cidade do cliente, que decidiria se a entrega é na região
-metropolitana, não está ao alcance dele: `payment_options` recebe isso como
-parâmetro e assume Campo Grande por padrão (ver Limitações).
+I considered a **SQL agent**, which would give more query flexibility. For 65
+rows it does not pay off: it adds an entire failure surface (invalid SQL,
+injection, silently wrong joins) without solving anything the seven tools do
+not already solve. If the catalog were the 300k rows a real store would have,
+the trade would invert.
 
-**A data de recebimento é aproximada pela previsão de entrega.** A base não
-registra quando o produto chegou de fato, só `estimated_delivery`. É o que o
-agente usa para contar os 7 dias de arrependimento, e ele diz a data em que se
-baseou ao responder.
+The **policies** are the opposite case: prose in natural language, where the
+customer's question almost never uses the manual's words. There, retrieval is
+the right tool.
 
-**O manual e o catálogo se contradizem, e o catálogo ganha.** O manual fala em
-*"mais de 300 instrumentos"* e lista sopros e cordas orquestrais; o CSV tem 65
-produtos e nenhum item nessas categorias. Disponibilidade e preço sempre saem da
-tabela.
+Section 7.1 of the manual settles it: *"never give information about prices,
+stock or deadlines without checking the system"*. The agent is built so that
+this is structurally true, not an instruction the model may ignore.
 
-**Promoção vencida é tratada como inexistente.** Das 25 promoções cadastradas, 4
-têm `is_active = 1`. As outras 21 não chegam ao agente — ele não consegue
-oferecê-las nem por acidente. A seção 7.3 do manual manda verificar vigência e
-nunca prometer desconto vencido; em vez de confiar no modelo para isso, o dado
-não existe. (O exemplo 3 mostra o cliente perguntando por uma delas.)
+### Why LangGraph
 
-**O manual tem dois telefones diferentes, e os dois são usados.** A seção 1.2
-dá (67) 3341-4444 como "telefone / WhatsApp"; a seção 7 dá (67) 3321-4500 como
-"o canal de WhatsApp". Nas conversas de exemplo o agente cita um ou outro
-conforme a seção que recuperou. Não inventei um desempate: ambos estão no
-documento que a loja forneceu, e escolher um seria eu decidindo um dado de
-negócio. É o tipo de coisa que se confirma com o cliente antes de ir para
-produção.
+The `model → tool → model` loop is ~40 hand-written lines, and I did consider
+writing it that way to avoid the dependency. I kept LangGraph for one concrete
+reason: the **checkpointer**. It persists graph state by `thread_id`, which
+gives resumable conversations with the tool calls included, without me writing
+a serialization layer. The CLI uses `SqliteSaver` and the example generator
+uses `InMemorySaver` — the difference between them is one argument to
+`build_graph`.
 
-**O agente não executa ações, só informa.** Não cancela pedido, não emite
-reembolso, não aplica desconto e não reserva produto — os CSVs são a fonte da
-verdade e escrever neles a partir de uma conversa exigiria autenticação do
-cliente, que não temos.
+The graph is written out explicitly (`agent` → `tools_condition` → `tools` →
+`agent`) instead of `create_react_agent`, because the loop is the heart of the
+project and hiding it behind one call would remove the most interesting thing
+to read.
 
----
+### Model: `claude-haiku-5-5`
 
-## Limitações conhecidas
+The task is routing between seven well-described tools and writing short
+Portuguese replies — it does not need heavy reasoning. Haiku 5.5 is the
+cheapest model of the current generation and its function calling is reliable;
+in a support channel running thousands of conversations, that is the difference
+between viable and not. The model is configurable through `EMPORIO_MODEL`, so
+moving up to Sonnet is one line in `.env`.
 
-**Não há avaliação automatizada do agente.** Os 27 testes cobrem as ferramentas,
-que são funções puras — travam as regras do manual (PIX que não acumula com
-promoção, parcela mínima, janelas de prazo) sem gastar uma chamada de LLM. O que
-*não* está coberto é a decisão do modelo: nada garante que ele vá chamar
-`search_policies` na pergunta certa. Essa é a lacuna mais séria do projeto.
+One quirk: Haiku 5.5 rejects sampling values other than the default
+(`temperature`, `top_p`, `top_k`). I inspected the payload assembled by
+`langchain-anthropic` before making any call, to confirm it does not send those
+fields.
 
-**A busca de produtos exige que todas as palavras apareçam.** Uma busca por
-"violão elétrico nylon" filtra por cada termo; se o cliente escrever o modelo
-errado, não há fallback por similaridade.
+### Retrieval: BM25 over the sections, not embeddings
 
-**BM25 não entende sinônimo.** "Posso pagar fiado?" não recupera a seção de
-formas de pagamento, porque nenhuma palavra bate. O corte de radical resolve
-flexão, não vocabulário.
+The manual is 8 pages. It would fit whole in the system prompt, and that would
+work. I chose to expose it as a **tool** for two reasons: it keeps the prompt
+prefix small and stable, and it makes the decision *"this is a policy
+question"* explicit and auditable — which is precisely the behaviour the
+challenge asks the agent to get right. In the generated examples you can watch
+the agent choosing between querying data and querying the manual.
 
-**Pergunta com dois assuntos abafa um deles.** Apareceu na primeira rodada de
-exemplos: o agente buscou *"pedido atrasado não entregue, contato da loja e
-WhatsApp"* numa chamada só, os termos de entrega dominaram o ranking e a seção
-de contato não voltou nem no top-6 — o agente acabou dizendo que não tinha o
-número. Mitiguei no prompt, instruindo uma busca por assunto, e as conversas
-regeradas passaram a fazer chamadas curtas e focadas. É mitigação, não
-correção: a fragilidade é do retriever, e some com busca híbrida.
+The search is lexical (BM25) rather than vector-based, because with ~25 short
+passages and Portuguese questions full of the manual's literal terms (*troca,
+garantia, boleto, frete*) it hits, and it avoids pulling in a second provider
+just to generate embeddings.
 
-**O frete presume Campo Grande.** `payment_options` tem
-`metro_area_delivery=True` como padrão, e o agente não tem como saber a cidade
-do cliente — ele teria que perguntar, e nem sempre pergunta. Para quem é de
-fora, a regra correta é cotação por CEP (PAC, SEDEX ou Jadlog), não o "frete
-grátis acima de R$ 500" da região metropolitana. É a limitação que mais me
-incomoda das que sobraram, porque produz uma resposta *errada* em vez de uma
-resposta incompleta. O conserto certo não é prompt, é ter a cidade do cliente
-junto do pedido.
+A detail that only showed up under test: the customer writes *"me arrependi"*
+and the manual says *"Direito de Arrependimento"*. Untreated, section 4.1 was
+never retrieved. The fix was cutting stems at 5 characters — a poor man's
+stemmer, but enough for this corpus and without the false positives of a full
+one. With it, all 11 test questions bring the right section into the top 3.
 
-**O histórico cresce sem limite.** Uma conversa longa reenvia tudo a cada turno.
-Com 1M de contexto e atendimento curto não é um problema prático, mas não há
-compactação.
+### PDF extraction
 
-**Uma conversa por vez.** O `SqliteSaver` síncrono atende um CLI; uma API com
-concorrência pediria a versão assíncrona.
+pypdf's default mode returns this manual with one word per line, which destroys
+any chance of detecting headings. `layout` mode preserves the visual structure,
+and then the 29 numbered sections fall out of a one-line regex.
 
-### Com mais tempo
+### Prompt: identity in the prompt, facts in the tools
 
-A primeira coisa seria o **conjunto de avaliação**: 30 a 40 perguntas rotuladas
-com a ferramenta que *deveria* ser chamada e um fato que *precisa* aparecer na
-resposta. Sem isso, qualquer mexida no prompt é palpite — não dá para saber se
-melhorou ou piorou. É o que separa o protótipo de algo que se mantém.
+The system prompt holds persona, tone, routing rules and limits — and **no
+store data**. Address, opening hours and accepted payment methods are not
+written there, stable as they are. If they were, there would be two sources of
+truth for the same fact, and they would diverge the first time the manual was
+updated.
 
-Depois:
-
-- **Busca híbrida nas políticas** — BM25 combinado com embeddings resolveria o
-  problema de sinônimo, que é o teto da abordagem atual.
-- **Cache de prompt** no bloco de system + definições de ferramenta. O prefixo
-  já é estável por construção, então é quase de graça.
-- **Cadastro de clientes** e, com ele, saudação pelo nome, cidade para o cálculo
-  de frete e histórico de compras para recomendação.
-- **Handoff para humano** — um gatilho explícito quando o cliente reclama ou
-  pede alguém. Hoje o agente orienta a procurar a loja, mas não registra nada.
-- **Uma API** (FastAPI) no lugar do CLI, que é o que um WhatsApp real precisaria.
+The tone comes from section 7.1 of the manual: *"informal but professional
+(...) as if talking to a friend who knows music"*. The agent is called Dani.
 
 ---
 
-## Exemplos de interação
+## Assumptions made
 
-Em [`examples/`](examples/), cinco conversas geradas por
-`scripts/generate_examples.py` rodando contra o modelo de verdade — incluindo quais
-ferramentas o agente escolheu chamar em cada turno. Nenhuma foi escrita à mão.
+**The agent's reference date is configurable, and the default is not today.**
+The data runs from 2025-10-15 to 2026-03-22. Running the agent on the real
+system date would put every order outside the 7-day (withdrawal) and 30-day
+(defect exchange) windows, making those rules impossible to demonstrate. The
+default is `2026-03-23`, the day after the last order — the only value that
+keeps the whole dataset coherently in the past. Configurable through
+`EMPORIO_DATA_REFERENCIA`; `hoje` uses the real date.
 
-| # | Cenário | O que demonstra |
+**The agent does not use a customer table.** `orders.customer_id` points at a
+table this project does not consume, so the agent does not know who it is
+talking to and cannot find an order by name, tax ID or email. Identification is
+by order number, and it does not hand over order data unless the customer
+supplies that number.
+
+That carries two costs, which I would rather state than hide. The manual asks,
+in flow 7.2, to "greet the customer by name (if available)" — and the agent
+never greets. And the customer's city, which decides whether delivery is in the
+metro area, is out of its reach: `payment_options` takes that as a parameter
+and assumes Campo Grande by default (see Limitations).
+
+**The delivery date is approximated by the delivery estimate.** The dataset
+does not record when the product actually arrived, only `estimated_delivery`.
+That is what the agent counts the 7 days from, and it states the date it based
+itself on when answering.
+
+**The manual and the catalog contradict each other, and the catalog wins.** The
+manual claims *"more than 300 instruments"* and lists wind and orchestral
+strings; the CSV has 65 products and nothing in those categories. Availability
+and price always come from the table.
+
+**An expired promotion is treated as non-existent.** Of the 25 promotions on
+file, 4 have `is_active = 1`. The other 21 never reach the agent — it cannot
+offer them even by accident. Section 7.3 of the manual requires checking
+validity and never promising a lapsed discount; rather than trusting the model
+with that, the data simply does not exist. (Example 3 shows a customer asking
+about one of them.)
+
+**The manual carries two different phone numbers, and both get used.** Section
+1.2 gives (67) 3341-4444 as "phone / WhatsApp"; section 7 gives (67) 3321-4500
+as "the WhatsApp channel". In the example conversations the agent cites one or
+the other depending on which section it retrieved. I did not invent a
+tie-break: both are in the document the store provided, and picking one would
+be me deciding a business fact. This is the kind of thing you confirm with the
+client before going to production.
+
+**The agent informs, it does not act.** It does not cancel orders, issue
+refunds, apply discounts or reserve products — the CSVs are the source of truth
+and writing to them from a conversation would require authenticating the
+customer, which we cannot do.
+
+---
+
+## Known limitations
+
+**There is no automated evaluation of the agent.** The 27 tests cover the
+tools, which are pure functions — they lock down the manual's rules (PIX not
+stacking with a promotion, minimum instalments, deadline windows) without
+spending an LLM call. What is *not* covered is the model's decision: nothing
+guarantees it will call `search_policies` on the right question. This is the
+most serious gap in the project.
+
+**Product search requires every word to appear.** A search for "violão elétrico
+nylon" filters on each term; if the customer misspells the model, there is no
+similarity fallback.
+
+**BM25 does not understand synonyms.** "Posso pagar fiado?" does not retrieve
+the payment section, because no word matches. Stem cutting solves inflection,
+not vocabulary.
+
+**A two-topic question drowns one of them.** This showed up in the first round
+of examples: the agent searched *"pedido atrasado não entregue, contato da loja
+e WhatsApp"* in a single call, the delivery terms dominated the ranking and the
+contact section did not come back even in the top 6 — so the agent told the
+customer it did not have the number. I mitigated it in the prompt, asking for
+one search per topic, and the regenerated conversations now make short, focused
+calls. That is mitigation, not a fix: the fragility belongs to the retriever,
+and hybrid search removes it.
+
+**Shipping assumes Campo Grande.** `payment_options` defaults to
+`metro_area_delivery=True`, and the agent has no way to know the customer's
+city — it would have to ask, and it does not always ask. For someone outside
+the metro area the correct rule is per-postcode quoting (PAC, SEDEX or Jadlog),
+not the "free shipping above R$500" metro rule. This is the limitation that
+bothers me most of those left, because it produces a *wrong* answer rather than
+an incomplete one. The real fix is not prompting, it is having the customer's
+city alongside the order.
+
+**History grows without bound.** A long conversation resends everything each
+turn. With a 1M context window and short support exchanges this is not a
+practical problem, but there is no compaction.
+
+**One conversation at a time.** The synchronous `SqliteSaver` is fine for a
+CLI; an API with concurrency would want the async version.
+
+### With more time
+
+The first thing would be the **evaluation set**: 30 to 40 questions labelled
+with the tool that *should* be called and a fact that *must* appear in the
+answer. Without it, any change to the prompt is guesswork — there is no way to
+know whether it helped or hurt. That is what separates a prototype from
+something maintainable.
+
+After that:
+
+- **Hybrid policy search** — BM25 combined with embeddings would solve the
+  synonym problem, which is the ceiling of the current approach.
+- **Prompt caching** on the system block and tool definitions. The prefix is
+  already stable by construction, so it is nearly free.
+- **A customer table** and, with it, greeting by name, the city for shipping
+  calculations, and purchase history for recommendations.
+- **Human handoff** — an explicit trigger when a customer complains or asks for
+  a person. Today the agent points them to the store but records nothing.
+- **An API** (FastAPI) instead of the CLI, which is what a real WhatsApp
+  integration would need.
+
+---
+
+## Example interactions
+
+In [`examples/`](examples/), five conversations produced by
+`scripts/generate_examples.py` running against the real model — including which
+tools the agent chose to call on each turn. None were written by hand. The
+conversations themselves are in Portuguese, since that is the language the
+agent works in.
+
+| # | Scenario | What it shows |
 |---|---|---|
-| 1 | [Catálogo por faixa de preço](examples/01-catalogo-por-faixa-de-preco.md) | Consulta ao catálogo com filtro numérico |
-| 2 | [Informações gerais e escopo](examples/02-informacoes-gerais-e-escopo.md) | Políticas + recusa de acessórios |
-| 3 | [Promoção expirada](examples/03-promocao-expirada.md) | **Não trivial** — o cliente cobra um desconto que não vale mais |
-| 4 | [Devolução de pedido](examples/04-devolucao-pedido.md) | **Não trivial** — cruza dados do pedido com a janela de prazo da política |
-| 5 | [Fora de escopo e rastreio](examples/05-fora-de-escopo-e-pedido-em-transito.md) | Recusa educada + dois pedidos em estados diferentes |
+| 1 | [Catalog by price range](examples/01-catalogo-por-faixa-de-preco.md) | Catalog query with a numeric filter |
+| 2 | [Store info and scope](examples/02-informacoes-gerais-e-escopo.md) | Policies + turning down accessories |
+| 3 | [Expired promotion](examples/03-promocao-expirada.md) | **Non-trivial** — the customer claims a discount that no longer applies |
+| 4 | [Order return](examples/04-devolucao-pedido.md) | **Non-trivial** — crosses order data with the policy's deadline window |
+| 5 | [Out of scope and tracking](examples/05-fora-de-escopo-e-pedido-em-transito.md) | Polite refusal + two orders in different states |
 
 ---
 
-## Uso de assistentes de código
+## Use of coding assistants
 
-Usei o **Claude Code** (modelo Opus 5) em sessão interativa, do início ao fim.
-O fluxo foi deliberadamente de duas fases.
+I used **Claude Code** (Opus 5) in an interactive session, start to finish. The
+workflow was deliberately in two phases.
 
-**Primeiro exploração, sem escrever código.** Pedi que lesse o enunciado e os
-dados e me trouxesse o que estava lá antes de propor qualquer arquitetura. Essa
-passada rendeu as descobertas que mais moldaram o projeto: que só 4 das 25
-promoções estão vigentes — e que o Takamine GD20, o produto sugerido no próprio
-enunciado, tem uma promoção expirada, o que virou o exemplo 3. O descompasso
-entre a data real e o fim dos dados também apareceu aqui, antes de virar bug.
+**Exploration first, no code.** I asked it to read the brief and the data and
+bring me what was actually there before proposing any architecture. That pass
+produced the findings that shaped the project most: that only 4 of the 25
+promotions are live — and that the Takamine GD20, the product suggested in the
+brief itself, carries an expired one, which became example 3. The mismatch
+between the real date and the end of the data also surfaced here, before it
+could become a bug.
 
-**Depois implementação em blocos verificáveis.** Dados → políticas →
-ferramentas → grafo → CLI, com teste rodando a cada etapa e um commit por bloco.
-O histórico do repositório é esse processo, não uma reconstrução.
+**Then implementation in verifiable blocks.** Data → policies → tools → graph →
+CLI, with tests running at each step and one commit per block. The repository's
+history is that process, not a reconstruction.
 
-As **decisões de arquitetura foram minhas**, tomadas sobre opções que pedi que
-fossem apresentadas com trade-offs: function calling em vez de agente de SQL,
-LangGraph em vez de loop próprio, BM25 em vez de embeddings, data de referência
-configurável em vez de reescrever os CSVs. Em cada uma, a justificativa está
-acima — e o ponto de usar o assistente foi chegar nelas com os dados na mão, não
-no abstrato.
+The **architectural decisions were mine**, taken over options I asked to see
+with their trade-offs: function calling over a SQL agent, LangGraph over a
+hand-rolled loop, BM25 over embeddings, a configurable reference date over
+rewriting the CSVs. The justification for each is above — and the point of
+using the assistant was to reach them with the data in hand, not in the
+abstract.
 
-Onde ele rendeu mais: varrer os CSVs atrás de casos de borda (descontinuado com
-estoque, pedido sem rastreio, promoções duplicadas no mesmo produto) e
-transformar isso em teste. Onde precisei corrigir: a primeira versão do índice
-de políticas engolia as seções-pai sem corpo próprio (`5.`, `6.`, `8.`) e não
-recuperava a seção 4.1 para *"me arrependi"* — os dois só apareceram porque medi
-a recuperação em vez de aceitar que parecia funcionar.
+Where it paid off most: sweeping the CSVs for edge cases (discontinued items
+still in stock, orders without tracking, duplicate promotions on the same
+product) and turning those into tests. Where I had to correct it: the first
+version of the policy index swallowed parent sections with no body of their own
+(`5.`, `6.`, `8.`) and failed to retrieve section 4.1 for *"me arrependi"* —
+both only surfaced because retrieval was measured instead of assumed to work.
